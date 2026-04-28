@@ -1,0 +1,60 @@
+# ==========================================
+# 1. SECURITY (QUAN TRỌNG NHẤT)
+# ==========================================
+# Tuyệt đối không đẩy các file chứa API Key lên GitHub
+.env
+.env.local
+.env.*.local
+
+# ==========================================
+# 2. PYTHON (BACKEND)
+# ==========================================
+# Các file rác sinh ra khi chạy Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Môi trường ảo (Virtual Environments)
+venv/
+.venv/
+env/
+ENV/
+
+# Các file dữ liệu lớn hoặc database local (nếu không muốn up lên)
+*.csv
+*.db
+*.sqlite3
+
+# Thư mục chứa chỉ mục FAISS (nếu bạn muốn người khác tự tạo lại)
+# index.faiss
+# index.pkl
+
+# ==========================================
+# 3. NODE.JS / REACT (FRONTEND)
+# ==========================================
+# Thư viện cực nặng, không bao giờ up lên GitHub
+node_modules/
+
+# Các file build đầu ra
+dist/
+build/
+.cache/
+
+# Nhật ký lỗi
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ==========================================
+# 4. SYSTEM & IDE
+# ==========================================
+# File hệ thống của Mac và Windows
+.DS_Store
+Thumbs.db
+
+# Cấu hình riêng của trình soạn thảo (VS Code, PyCharm)
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
