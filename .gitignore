@@ -22,7 +22,6 @@ env/
 ENV/
 
 # Các file dữ liệu lớn hoặc database local (nếu không muốn up lên)
-*.csv
 *.db
 *.sqlite3
 
