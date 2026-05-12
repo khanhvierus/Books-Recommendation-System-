@@ -15,9 +15,9 @@ Triggered via the React sidebar, this module is built for speed and direct book 
 
 ---
 
-### 2.  Module 2: RAG Chatbot ("AI-Cá Vàng") — Multi-Agent System
+### 2.  Module 2: RAG Chatbot — Multi-Agent System
 
-> ⚡ **Major Upgrade:** The chatbot has been completely rebuilt from a simple RAG pipeline into a **LangGraph-powered Multi-Agent System** with three specialized agents.
+
 
 #### 2.1 Agent Architecture (LangGraph)
 The system uses a **StateGraph** to route every user message through the appropriate agent automatically:
