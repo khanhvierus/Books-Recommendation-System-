@@ -1,6 +1,6 @@
 #  RAG Smart Library
 
-A comprehensive Fullstack application that implements **Retrieval-Augmented Generation (RAG)** to provide intelligent book recommendations. The system transitions from traditional keyword searching to semantic "idea-based" discovery using Vector Databases and Large Language Models (LLMs).
+A comprehensive Fullstack application that implements **Retrieval-Augmented Generation (RAG)** to provide intelligent book recommendations and deep book Q&A. The system transitions from traditional keyword searching to semantic "idea-based" discovery using Vector Databases and Large Language Models (LLMs).
 
 ---
 
@@ -13,15 +13,68 @@ Triggered via the React sidebar, this module is built for speed and direct book 
 * **Title Search (Fuzzy Match):** Fast string matching logic to find specific book names while handling minor user typos.
 * **Idea Search (Semantic Search):** Converts conceptual user queries (e.g., "books about existential crisis") into mathematical vectors. It scans the shared **FAISS (Facebook AI Similarity Search)** database to retrieve books based on deep meaning rather than exact keywords.
 
-### 2.  Module 2: RAG Chatbot ("AI-Cá Vàng" Consultation)
-Triggered via the floating widget, this module acts as a conversational AI expert. It strictly returns sanitized Markdown text.
-* **Custom RAG Pipeline:** When a user asks for recommendations, the backend reuses the embedding logic to retrieve relevant book data from FAISS. This data is injected as context into a strict System Prompt for the Groq Cloud API (Llama-3-8B model).
-* **Python Gatekeeper:** A logic layer that inspects LLM outputs before they reach the user. 
-    * *Security:* It prevents the AI from generating broken image links or hallucinated URLs by stripping unauthorized Markdown tags.
-    * *Consistency:* Ensures the AI strictly adheres to the requested quantity of books.
-* **Bypass & Latency Simulation:**
-    * *Hardcoded Logic:* For specific predefined queries (e.g., project "Easter Eggs" like remembering user data), the system bypasses the LLM entirely to provide 100% accurate, static responses.
-    * *Natural UX:* A 1-second artificial delay (`time.sleep(1)`) is implemented for these bypassed responses to mimic a human-like thinking pattern.
+---
+
+### 2.  Module 2: RAG Chatbot ("AI-Cá Vàng") — Multi-Agent System
+
+> ⚡ **Major Upgrade:** The chatbot has been completely rebuilt from a simple RAG pipeline into a **LangGraph-powered Multi-Agent System** with three specialized agents.
+
+#### 2.1 Agent Architecture (LangGraph)
+The system uses a **StateGraph** to route every user message through the appropriate agent automatically:
+
+```
+User Message
+     ↓
+ Router Agent  ──→  classify intent
+     │
+     ├──→ 📚 Recommend Agent   (FAISS + Groq)
+     ├──→ 🧙 Deep QA Agent     (Qdrant + BM25 + Reflection + Groq)
+     └──→ 💬 Chat Agent        (Groq)
+```
+
+| Route | Trigger | Engine |
+|---|---|---|
+| `ROUTE_RECOMMEND` | User asks for book suggestions | FAISS semantic search |
+| `ROUTE_DEEP_QA` | User asks about plot/characters in a specific book | Qdrant + BM25 Hybrid Search |
+| `ROUTE_CHAT` | Greetings, general chit-chat | Direct LLM |
+
+#### 2.2 Deep QA Pipeline — Hybrid Search + Reflection
+
+The most advanced component. When a user asks a deep question about a book (e.g., *"Why did Sirius Black give Harry the Firebolt?"*), the system runs a 3-step pipeline:
+
+**Step 1 — Reflection (Query Reformulation)**
+
+Before searching, an LLM reformulates the user's question into a more complete, search-optimized query:
+```
+User:      "Why did Sirius give the Firebolt?"
+Reflected: "What was Sirius Black's reason for sending/gifting
+            Harry Potter the Firebolt broomstick in Prisoner of Azkaban?"
+```
+This solves the **vocabulary mismatch problem** — the book may use "sent" while the user asks "give", causing naive search to miss the relevant passage. Reflection also uses **chat history** to resolve pronouns ("he", "it") into full names.
+
+**Step 2 — Hybrid Search (Dense + BM25 + RRF Fusion)**
+
+Two complementary search engines run in parallel on the reflected query:
+
+| Engine | Method | Strength |
+|---|---|---|
+| **Dense Search** (Qdrant) | Semantic vector similarity | Understands meaning and context |
+| **BM25 Search** (rank-bm25) | Keyword frequency matching | Finds exact names and phrases |
+
+Results are merged using **Reciprocal Rank Fusion (RRF)** — chunks that score well in both engines are ranked highest, maximizing precision.
+
+**Step 3 — LLM Answer Generation**
+
+Top retrieved chunks are injected as context into Groq (Llama-3.1-8B), which synthesizes a detailed answer in Vietnamese. The LLM is strictly instructed to answer only from the provided context, preventing hallucination.
+
+#### 2.3 Chat History & Context Awareness
+Chat history is maintained across the entire session and passed to the Reflection step, enabling coherent multi-turn conversations:
+```
+Turn 1 — User: "Sirius Black là ai?"         → AI answers
+Turn 2 — User: "Tại sao ông ấy trốn thoát?" → Reflection resolves "ông ấy" → "Sirius Black"
+```
+
+---
 
 ### 3.  Frontend Presentation Layer
 Built with **React.js**, the frontend focuses on professional minimalism and real-time interaction.
@@ -32,85 +85,103 @@ Built with **React.js**, the frontend focuses on professional minimalism and rea
 
 ##  Tech Stack
 
-* **Language:** Python 3.x, JavaScript (ES6+)
-* **Frameworks:** FastAPI, React.js (Vite)
-* **AI/ML:** FAISS, Groq API (Llama-3), Sentence Transformers
-* **Security:** Dotenv (.env) for API key management
-* **Formatting:** React Markdown, Custom CSS `@keyframes`
+| Layer | Technology |
+|---|---|
+| **Language** | Python 3.x, JavaScript (ES6+) |
+| **Frameworks** | FastAPI, React.js (Vite) |
+| **Agent Orchestration** | LangGraph |
+| **Vector DB (Books)** | FAISS |
+| **Vector DB (Book Content)** | Qdrant (local) |
+| **Keyword Search** | rank-bm25 |
+| **Embedding Model** | nomic-ai/nomic-embed-text-v1.5 |
+| **LLM** | Groq API (Llama-3.1-8B-Instant) |
+| **Security** | Dotenv (.env) for API key management |
+| **Formatting** | React Markdown, Custom CSS `@keyframes` |
 
 ---
 
 ##  Installation & Setup
 
-1.  **Backend:**
-    * Install dependencies: `pip install fastapi uvicorn groq faiss-cpu python-dotenv`
-    * Configure `.env` with `GROQ_API_KEY`.
-    * Start server: `uvicorn main:app --reload`
+### Backend
+```bash
+# Install core dependencies
+pip install fastapi uvicorn groq faiss-cpu python-dotenv
 
-2.  **Frontend:**
-    * Install dependencies: `npm install`
-    * Install Markdown support: `npm install react-markdown`
-    * Start development: `npm run dev`
+# Install AI Agent dependencies
+pip install langgraph qdrant-client sentence-transformers rank-bm25 langchain-text-splitters transformers
+
+# Configure environment
+# Add GROQ_API_KEY to your .env file
+
+# Build the Qdrant + BM25 index (run once)
+python create_qdrant_database.py
+
+# Start server
+uvicorn main:app --reload
+```
+
+### Frontend
+```bash
+npm install
+npm install react-markdown
+npm run dev
+```
 
 ---
-##  Video Demo :  **[Drive_Link](https://drive.google.com/file/d/1-qFh57czCc0QnIOQNK_dztiEoabyw7h1/view?usp=sharing)**
 
-
-
-## System Block Diagram 
+##  System Block Diagram
 
 ```mermaid
 flowchart TD
-    %% Styling for visual clarity
     classDef frontend fill:#003366,stroke:#fff,stroke-width:2px,color:#fff;
     classDef api fill:#10b981,stroke:#fff,stroke-width:2px,color:#fff;
     classDef db fill:#f59e0b,stroke:#fff,stroke-width:2px,color:#fff;
     classDef ai fill:#8b5cf6,stroke:#fff,stroke-width:2px,color:#fff;
+    classDef agent fill:#ef4444,stroke:#fff,stroke-width:2px,color:#fff;
 
     User((👤 User)) --> UI[💻 React Frontend]:::frontend
 
-    %% Split flows directly from UI
     UI ===>|1. Search Sidebar| API_S[🔍 API: /search]:::api
     UI ===>|2. Chatbot Widget| API_C[💬 API: /chat]:::api
 
-    %% ==========================================
-    %% MODULE 1: SEARCH ENGINE (LEFT SIDE)
-    %% ==========================================
     subgraph MODULE 1: SEARCH ENGINE
         API_S --> Mode{Search Mode?}
         Mode -->|By Title| Fuzzy[Fuzzy Match Algorithm]
         Mode -->|By Idea| Embed1[Text to Vector]
-        
         Fuzzy --> Data1[(Book Metadata)]:::db
         Embed1 --> FAISS1[(FAISS Vector DB)]:::db
-        
         Data1 --> Result1[Return JSON Array]
         FAISS1 --> Result1
     end
 
-    %% ==========================================
-    %% MODULE 2: RAG CHATBOT (RIGHT SIDE)
-    %% ==========================================
-    subgraph MODULE 2: RAG CHATBOT
-        API_C --> Filter{Query Type?}
-        
-        %% VIP Bypass Route
-        Filter -->|Special Keyword\ne.g. Ngọc Linh| Bypass[Hardcoded Bypass\n+ 1s Artificial Delay]
-        
-        %% RAG Route
-        Filter -->|General Request| Embed2[Text to Vector]
-        Embed2 --> FAISS2[(FAISS Vector DB)]:::db
-        FAISS2 --> Prompt[Inject Context to Prompt]
-        Prompt --> Llama[[Groq Llama-3 Model]]:::ai
-        Llama --> Gate[Python Gatekeeper\nSanitize Format]
-        
-        Bypass --> Result2[Return Safe Markdown]
-        Gate --> Result2
+    subgraph MODULE 2: MULTI-AGENT RAG CHATBOT
+        API_C --> Router[🤖 Router Agent]:::agent
+        Router -->|ROUTE_CHAT| ChatAgent[💬 Chat Agent]:::agent
+        Router -->|ROUTE_RECOMMEND| RecAgent[📚 Recommend Agent]:::agent
+        Router -->|ROUTE_DEEP_QA| QAAgent[🧙 Deep QA Agent]:::agent
+
+        RecAgent --> FAISS2[(FAISS Vector DB)]:::db
+        FAISS2 --> RecAgent
+
+        QAAgent --> Reflect[🔄 Reflection\nQuery Reformulation]
+        Reflect --> DenseSearch[(Qdrant\nVector DB)]:::db
+        Reflect --> BM25[BM25\nKeyword Search]
+        DenseSearch --> RRF[RRF Fusion]
+        BM25 --> RRF
+        RRF --> QAAgent
+
+        ChatAgent --> Groq[[Groq Llama-3.1]]:::ai
+        RecAgent --> Groq
+        QAAgent --> Groq
     end
 
-    %% Show shared resource logically without crossing lines
-    FAISS1 -.- |"Shared Knowledge Base"| FAISS2
+    FAISS1 -.- |Shared Knowledge Base| FAISS2
 
-    %% Return to Frontend
     Result1 ===> UI
-    Result2 ===> UI
+    Groq ===> UI
+```
+
+---
+
+##  Video Demo
+**[Drive Link](https://drive.google.com/file/d/1-qFh57czCc0QnIOQNK_dztiEoabyw7h1/view?usp=sharing)**
