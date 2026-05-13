@@ -183,5 +183,31 @@ flowchart TD
 
 ---
 
+## Validation & Failure Analysis
+
+### Core failure: Vocabulary Mismatch
+
+Test query: *"Why did Sirius Black **give** Harry the Firebolt?"*
+→ Source text uses **"sent"** — different surface form, same meaning.
+→ Dense search missed the target passage entirely.
+
+### Iterations
+
+| # | Solution | Result |
+|---|---|---|
+| 1 | Increase retrieval limit (10 → 80) | ❌ chunk still missing |
+| 2 | Hybrid Search (Dense + BM25 + RRF) | ✅ improved, not solved |
+| 3 | Keyword fallback (hardcoded) | ✅ works, not generalizable |
+| 4 | Reflection — LLM reformulates query | ⚠️ LLM drifted "why" → "significance", broke retrieval |
+| 5 | Re-ranking by question type (CAUSE / FACT / THEME) | ⚠️ better ranking, chunk still outside top-K |
+
+### Key insight
+Solution 4 revealed that **each pipeline component needs independent validation** —
+the Reflection step itself introduced a new failure mode.
+
+### Open issues
+- Reflection prompt needs tighter constraints to prevent intent drift
+- No automated test suite yet — detection is currently manual
+
 ##  Video Demo
 **[Drive Link](https://drive.google.com/file/d/1-qFh57czCc0QnIOQNK_dztiEoabyw7h1/view?usp=sharing)**
