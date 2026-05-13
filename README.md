@@ -27,9 +27,9 @@ User Message
      ↓
  Router Agent  ──→  classify intent
      │
-     ├──→ 📚 Recommend Agent   (FAISS + Groq)
-     ├──→ 🧙 Deep QA Agent     (Qdrant + BM25 + Reflection + Groq)
-     └──→ 💬 Chat Agent        (Groq)
+     ├──→  Recommend Agent   (FAISS + Groq)
+     ├──→  Deep QA Agent     (Qdrant + BM25 + Reflection + Groq)
+     └──→  Chat Agent        (Groq)
 ```
 
 | Route | Trigger | Engine |
@@ -196,11 +196,11 @@ Test query: *"Why did Sirius Black **give** Harry the Firebolt?"*
 
 | # | Solution | Result |
 |---|---|---|
-| 1 | Increase retrieval limit (10 → 80) | ❌ chunk still missing |
-| 2 | Hybrid Search (Dense + BM25 + RRF) | ✅ improved, not solved |
-| 3 | Keyword fallback (hardcoded) | ✅ works, not generalizable |
-| 4 | Reflection — LLM reformulates query | ⚠️ LLM drifted "why" → "significance", broke retrieval |
-| 5 | Re-ranking by question type (CAUSE / FACT / THEME) | ⚠️ better ranking, chunk still outside top-K |
+| 1 | Increase retrieval limit (10 → 80) |  chunk still missing |
+| 2 | Hybrid Search (Dense + BM25 + RRF) |  improved, not solved |
+| 3 | Keyword fallback (hardcoded) |  works, not generalizable |
+| 4 | Reflection — LLM reformulates query |  LLM drifted "why" → "significance", broke retrieval |
+| 5 | Re-ranking by question type (CAUSE / FACT / THEME) |  better ranking, chunk still outside top-K |
 
 
 ### Open issues
