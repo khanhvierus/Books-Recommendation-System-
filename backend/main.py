@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from recommender import BookRecommender 
+from rerank_utils import Reranker
 import pandas as pd
 import os
 import time
@@ -24,6 +25,7 @@ app.add_middleware(
 # 1. KHỞI TẠO AI VÀ GROQ
 print("Đang nạp dữ liệu FAISS...")
 ai_system = BookRecommender()
+reranker = Reranker()
 
 # LƯU Ý: Đảm bảo máy bạn đã có biến môi trường GROQ_API_KEY, 
 # hoặc dán trực tiếp key vào đây (nhưng cẩn thận đừng push lên Github)
@@ -93,7 +95,9 @@ def chat_with_bot(request: ChatRequest):
     requested_count = int(match.group(1)) if match else 3 
     fetch_count = min(max(requested_count, 3), 10) 
 
-    context_books = ai_system.hybrid_search(request.message)[:fetch_count] 
+    context_books = ai_system.hybrid_search(request.message, top_k_ai=20, top_k_final=fetch_count*2)
+    # Re-rank kết quả bằng embedding
+    context_books = reranker.rerank(request.message, context_books, top_k=fetch_count)
     
     context_text = ""
     for i, b in enumerate(context_books):
