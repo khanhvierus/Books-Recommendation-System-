@@ -12,8 +12,8 @@ class BookRecommender:
         CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
         PARENT_DIR = os.path.dirname(CURRENT_DIR)
         
-        faiss_path = os.path.join(PARENT_DIR, "data", "books_index_nomic.faiss")
-        csv_path = os.path.join(PARENT_DIR, "data", "books_metadata.csv") 
+        faiss_path = os.path.join(CURRENT_DIR, "data", "books_index_nomic.faiss")
+        csv_path = os.path.join(CURRENT_DIR, "data", "books_metadata.csv") 
         
         # 2. Nạp dữ liệu
         self.index = faiss.read_index(faiss_path)
