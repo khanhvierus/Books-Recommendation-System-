@@ -1,0 +1,62 @@
+[
+  {
+    "question": "Hello, how are you today?",
+    "ground_truth": "The assistant should warmly greet the user in English and offer help with finding or discussing books."
+  },
+  {
+    "question": "I am looking for a fantasy book about wizards, magical schools, and a giant snake. Do you have any recommendations?",
+    "ground_truth": "The assistant should recommend 'Harry Potter and the Chamber of Secrets' based on the themes of wizards, magical schools, and a giant snake."
+  },
+  {
+    "question": "Can you recommend a good book involving a prison escape and time travel?",
+    "ground_truth": "The assistant should recommend 'Harry Potter and the Prisoner of Azkaban' based on the themes of prison escape and time travel."
+  },
+  {
+    "question": "In the book 'Harry Potter and the Chamber of Secrets', who is the Defense Against the Dark Arts teacher?",
+    "ground_truth": "Gilderoy Lockhart is the Defense Against the Dark Arts teacher."
+  },
+  {
+    "question": "In 'Harry Potter and the Prisoner of Azkaban', what is the name of the magical creature that is a Hippogriff?",
+    "ground_truth": "The Hippogriff's name is Buckbeak."
+  },
+  {
+    "question": "According to the book 'Harry Potter and the Chamber of Secrets', who actually opened the Chamber fifty years ago?",
+    "ground_truth": "Tom Riddle opened the Chamber of Secrets fifty years ago."
+  },
+  {
+    "question": "In 'Harry Potter and the Prisoner of Azkaban', why did Sirius Black give Harry the Firebolt?",
+    "ground_truth": "Sirius gave Harry the Firebolt to make up for thirteen birthdays' worth of missed presents from his godfather, and to apologize for frightening him."
+  },
+  {
+    "question": "In 'Harry Potter and the Chamber of Secrets', why is the Whomping Willow planted on the Hogwarts grounds?",
+    "ground_truth": "The Whomping Willow is actually explained in the Prisoner of Azkaban (to guard the passage for Lupin). If asked about it in the context of Chamber of Secrets, it was the tree that Harry and Ron crashed the flying car into."
+  },
+  {
+    "question": "Based on 'Harry Potter and the Prisoner of Azkaban', how did Sirius Black manage to escape from the dementors in Azkaban?",
+    "ground_truth": "He escaped by transforming into his dog Animagus form and slipping through the bars, because Dementors cannot sense animal emotions properly."
+  },
+  {
+    "question": "In 'Harry Potter and the Chamber of Secrets', how does the Basilisk petrify its victims instead of killing them instantly?",
+    "ground_truth": "The Basilisk petrifies victims when they see its reflection or view it through a medium (like water, a mirror, a camera, or a ghost), rather than looking directly into its eyes."
+  },
+  {
+    "question": "In 'Harry Potter and the Prisoner of Azkaban', how did Hermione manage to attend multiple classes occurring at the exact same time?",
+    "ground_truth": "She used a Time-Turner, a magical device given to her by Professor McGonagall."
+  },
+  {
+    "question": "In 'Harry Potter and the Chamber of Secrets', why was Rubeus Hagrid expelled from Hogwarts fifty years ago?",
+    "ground_truth": "He was expelled because Tom Riddle framed him, making it look like Hagrid's Acromantula (Aragog) was the monster that opened the Chamber of Secrets."
+  },
+  {
+    "question": "According to 'Harry Potter and the Prisoner of Azkaban', what is the Wi-Fi password at the Leaky Cauldron?",
+    "ground_truth": "There is no information about a Wi-Fi password in the book, as muggle technology does not work around magic."
+  },
+  {
+    "question": "In 'Harry Potter and the Chamber of Secrets', what is the exact chemical formula for Polyjuice Potion?",
+    "ground_truth": "The text does not contain a chemical formula, only magical ingredients like lacewing flies, leeches, and boomslang skin."
+  },
+  {
+    "question": "In 'Harry Potter and the Prisoner of Azkaban', did Dumbledore use an AK-47 assault rifle to fight off the Dementors?",
+    "ground_truth": "The text does not state this. Dumbledore uses a wand and magic to repel Dementors, not firearms."
+  }
+]

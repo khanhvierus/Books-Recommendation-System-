@@ -1,16 +1,28 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from recommender import BookRecommender 
-import pandas as pd
 import os
-import time
-from groq import Groq
-import re
-from dotenv import load_dotenv
 import json
-load_dotenv() 
-app = FastAPI(title="Book RAG API")
+import time
+import re
+import redis
+import pandas as pd # Đã bổ sung thư viện này để API search không bị lỗi
+from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, EmailStr
+from sqlalchemy.orm import Session
+from dotenv import load_dotenv
+
+# Nạp cấu hình từ file .env trước khi khởi tạo các thành phần hệ thống
+load_dotenv()
+
+# 1. IMPORT CÁC MODULE HỆ THỐNG
+from recommender import BookRecommender 
+from agent_graph import app_graph
+import models
+import auth
+
+# Khởi tạo bảng dữ liệu PostgreSQL khi khởi động hệ thống
+models.init_db()
+
+app = FastAPI(title="Smart Library API - Enterprise Edition")
 
 # CẤU HÌNH CORS
 app.add_middleware(
@@ -21,119 +33,171 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 1. KHỞI TẠO AI VÀ GROQ
-print("Đang nạp dữ liệu FAISS...")
-ai_system = BookRecommender()
+print("Đang nạp dữ liệu Catalog Sách cho UI...")
+book_catalog = BookRecommender()
 
-# LƯU Ý: Đảm bảo máy bạn đã có biến môi trường GROQ_API_KEY, 
-# hoặc dán trực tiếp key vào đây (nhưng cẩn thận đừng push lên Github)
-groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# ==========================================
+# 🔌 KẾT NỐI REDIS CLOUD (UPSTASH)
+# ==========================================
+try:
+    redis_client = redis.Redis(
+        host=os.getenv("REDIS_HOST"),
+        port=int(os.getenv("REDIS_PORT", 6379)),
+        password=os.getenv("REDIS_PASSWORD"),
+        decode_responses=True,
+        ssl=True
+    )
+    redis_client.ping()
+    print("✅ Đã kết nối thành công với Redis Cloud!")
+except Exception as e:
+    print(f"❌ Không thể kết nối Redis Cloud: {e}")
+    redis_client = None
 
-# 2. CẤU TRÚC DỮ LIỆU TÌM KIẾM (Đã thêm biến mode)
+# ==========================================
+# CẤU TRÚC DỮ LIỆU ĐẦU VÀO (SCHEMAS)
+# ==========================================
+class UserRegisterRequest(BaseModel):
+    username: str
+    email: EmailStr
+    password: str
+
+class UserLoginRequest(BaseModel):
+    username: str
+    password: str
+
 class SearchRequest(BaseModel):
     query: str
-    mode: str = "name" # "name" (fuzzy) hoặc "idea" (vector)
-    limit: int = 10    # Yêu cầu 10 cuốn
+    mode: str = "name"
+    limit: int = 10
 
-# 3. CẤU TRÚC DỮ LIỆU CHATBOT
 class ChatRequest(BaseModel):
     message: str
-    history: list = [] # Lưu lịch sử chat
+    session_id: str = "default_session"
 
 # ==========================================
-# CÁC API ENDPOINTS
+# 🔐 HỆ THỐNG API XÁC THỰC (AUTH ENDPOINTS)
 # ==========================================
+@app.post("/api/auth/register", status_code=status.HTTP_201_CREATED)
+def register_user(request: UserRegisterRequest, db: Session = Depends(models.get_db)):
+    db_user = db.query(models.User).filter(models.User.username == request.username).first()
+    if db_user:
+        raise HTTPException(status_code=400, detail="Tên tài khoản đã tồn tại trên hệ thống")
+        
+    db_email = db.query(models.User).filter(models.User.email == request.email).first()
+    if db_email:
+        raise HTTPException(status_code=400, detail="Email này đã được đăng ký sử dụng")
+        
+    hashed_pwd = auth.get_password_hash(request.password)
+    new_user = models.User(
+        username=request.username,
+        email=request.email,
+        hashed_password=hashed_pwd
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return {"message": "Đăng ký tài khoản thành công!", "username": new_user.username}
 
+@app.post("/api/auth/login")
+def login_user(request: UserLoginRequest, db: Session = Depends(models.get_db)):
+    user = db.query(models.User).filter(models.User.username == request.username).first()
+    if not user or not auth.verify_password(request.password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Tài khoản hoặc mật khẩu không chính xác")
+        
+    access_token = auth.create_access_token(data={"sub": user.username})
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer",
+        "username": user.username
+    }
+
+# ==========================================
+# CÁC API DÀNH CHO GIAO DIỆN WEB (UI ENDPOINTS)
+# ==========================================
 @app.get("/api/random")
 def get_random_books():
-    # Lấy 9 cuốn để chia làm 3 hàng x 3 cột
-    safe_df = ai_system.df_meta.sample(9).fillna("")
+    safe_df = book_catalog.df_meta.sample(9).fillna("")
     return {"data": safe_df.to_dict('records')}
 
 @app.post("/api/search")
 def search_books(request: SearchRequest):
-    # Chọn phương pháp tìm kiếm dựa vào mode từ Frontend gửi lên
-    if request.mode == "name":
-        # Tìm theo tên (Levenshtein)
-        results = ai_system.fuzzy_search_title(request.query, limit=request.limit)
-    else:
-        # Tìm theo ý tưởng (Vector Hybrid)
-        # Sửa lại hàm hybrid_search của bạn để lấy top_k=request.limit nếu cần
-        results = ai_system.hybrid_search(request.query) 
-        # Cắt lấy đúng 10 kết quả đầu tiên
-        results = results[:request.limit] 
-
-    # Lọc NaN trước khi trả về để tránh lỗi Internal Server Error
-    if isinstance(results, list) and len(results) > 0 and not ("error" in results[0]):
-        df_results = pd.DataFrame(results).fillna("")
-        return {"data": df_results.to_dict('records')}
-    
-    return {"data": []}
-
-@app.post("/api/chat")
-
-def chat_with_bot(request: ChatRequest):
-    user_msg_lower = request.message.lower()
-
-    # ==========================================
-    # 1. LUỒNG ĐẶC QUYỀN (VIP): KÝ ỨC VỀ NGỌC LINH
-    # ==========================================
-    # Nếu nhắc tới Ngọc Linh, bỏ qua AI, trả thẳng đoạn text gốc cứng cáp 100%
-    if "ngọc linh" in user_msg_lower or "linh" in user_msg_lower:
-        time.sleep(1)
-        exact_memory = "Ngọc Linh, 18/07/2004. Là một cô gái dịu dàng, xinh đẹp, vô tư, đôi lúc hay quên. Cô ấy rất thích các món nước đậm đà (hủ tíu, bánh canh, bún riêu, bún bò,...), thích uống cafe đậm vị và trà sữa đậm vị, rất mê đồ uống Ngô Gia. Ngủ nhiều, hát hay (hay lạc tông), thích đi du lịch, xem văn nghệ."
-        signature = "Tớ là Chatbot não cá vàng, tớ rất hay quên, nhưng mọi thứ về cậu, tớ sẽ luôn giữ trong ngăn sâu nhất của ký ức 💙💙💙"
-        return {"reply": f"{exact_memory}\n\n{signature}"}
-
-
-    # ==========================================
-    # 2. LUỒNG BÌNH THƯỜNG: AI TƯ VẤN SÁCH
-    # ==========================================
-    match = re.search(r'(\d+)', request.message)
-    requested_count = int(match.group(1)) if match else 3 
-    fetch_count = min(max(requested_count, 3), 10) 
-
-    context_books = ai_system.hybrid_search(request.message)[:fetch_count] 
-    
-    context_text = ""
-    for i, b in enumerate(context_books):
-        if isinstance(b, dict):
-            img_url = b.get('thumbnail', '').replace("http://", "https://")
-            if not img_url:
-                img_url = "https://via.placeholder.com/150x220?text=No+Cover"
-            
-            context_text += f"\n[BOOK {i+1}]:\n"
-            context_text += f"- Title: {b['title']}\n"
-            context_text += f"- Author: {b.get('authors', 'Unknown')}\n"
-            context_text += f"- Summary: {b.get('short_summary', 'No summary available')}\n"
-            context_text += f"- URL: {img_url}\n"
-
-    sys_prompt = f"""You are AI-CÁ VÀNG, a professional book assistant.
-    
-    DATA CONTEXT:
-    {context_text}
-
-    STRICT RULES:
-    1. If the user chats normally (e.g., hello, thanks), reply naturally in ENGLISH without listing books.
-    2. If recommending books, you MUST provide exactly {requested_count} books in ENGLISH.
-    3. FORMATTING: You MUST use this EXACT format for each book (Do not wrap in code blocks). DO NOT include any images or URLs:
-       
-       **[Title]**
-       - **Author:** [Author]
-       - **Summary:** [Summary]
-    """
-    
     try:
-        response = groq_client.chat.completions.create(
-            messages=[
-                {"role": "system", "content": sys_prompt},
-                {"role": "user", "content": request.message}
-            ],
-            model="llama-3.1-8b-instant",
-            max_tokens=1000
-        )
-        final_reply = response.choices[0].message.content.strip()
-    except Exception as e:
-        final_reply = "Oops! My goldfish brain just lost connection! 🐟"
+        # 1. Gọi đúng tên hàm trong recommender.py
+        if request.mode == "name":
+            results = book_catalog.get_similar_books(request.query, top_k=request.limit)
+        else:
+            # Sửa 'hybrid_search' thành 'search_by_idea'
+            results = book_catalog.search_by_idea(request.query, top_k=request.limit)
 
-    return {"reply": final_reply}
+        # 2. Xử lý an toàn dữ liệu trả về (Đảm bảo luôn là dạng list/dict)
+        if isinstance(results, list) and len(results) > 0 and not ("error" in results[0]):
+            import pandas as pd
+            df_results = pd.DataFrame(results).fillna("")
+            return {"data": df_results.to_dict('records')}
+            
+        elif str(type(results)) == "<class 'pandas.core.frame.DataFrame'>":
+            # Đề phòng trường hợp hàm của bạn trả về thẳng DataFrame
+            return {"data": results.fillna("").to_dict('records')}
+
+        return {"data": []}
+        
+    except Exception as e:
+        print(f"❌ Lỗi API Search: {e}")
+        return {"data": []}
+
+
+# ==========================================
+# API CHATBOT BẢO MẬT (SỬ DỤNG AI CORE + TRÍ NHỚ REDIS)
+# ==========================================
+@app.post("/api/chat")
+async def chat_with_bot(
+    request: ChatRequest, 
+    current_user: models.User = Depends(auth.get_current_user) # CHẶN CỬA: Bắt buộc đăng nhập
+):
+    # KẾT HỢP ID DATABASE VÀ SESSION ĐỂ CÔ LẬP TRÍ NHỚ NGƯỜI DÙNG
+    session_key = f"chat_history:{current_user.id}:{request.session_id}"
+
+    # LUỒNG TRÍ TUỆ NHÂN TẠO (ROUTING QUA LANGGRAPH + REDIS)
+    try:
+        chat_history = []
+        
+        if redis_client:
+            try:
+                history_str = redis_client.get(session_key)
+                if history_str:
+                    chat_history = json.loads(history_str)
+            except Exception as redis_err:
+                print(f"⚠️ Cảnh báo lỗi đọc dữ liệu từ Redis: {redis_err}")
+
+        print(f"🧠 Đang phục vụ [{current_user.username}]. Lịch sử hiện hành: {len(chat_history)} tin nhắn.")
+        
+        initial_state = {
+            "question": request.message,
+            "intent": "",
+            "context": "",
+            "answer": "",
+            "chat_history": chat_history 
+        }
+        
+        result_state = await app_graph.ainvoke(initial_state)
+        
+        raw_ans = result_state.get("answer", "Xin lỗi, tôi không thể xử lý yêu cầu lúc này.")
+        clean_ans = raw_ans.split("Final Answer:")[-1].strip() if "Final Answer:" in raw_ans else raw_ans
+        
+        chat_history.append({"role": "user", "content": request.message})
+        chat_history.append({"role": "assistant", "content": clean_ans})
+        
+        if len(chat_history) > 6:
+            chat_history = chat_history[-6:]
+            
+        if redis_client:
+            try:
+                redis_client.set(session_key, json.dumps(chat_history), ex=86400)
+            except Exception as redis_err:
+                print(f"⚠️ Cảnh báo lỗi ghi dữ liệu vào Redis: {redis_err}")
+        
+        return {"reply": clean_ans}
+        
+    except Exception as e:
+        print(f"❌ Lỗi xử lý nghiêm trọng tại LangGraph: {str(e)}")
+        return {"reply": "Oops! My goldfish brain just lost connection! 🐟 (Lỗi hệ thống AI)"}

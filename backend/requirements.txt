@@ -1,0 +1,48 @@
+# ==========================================
+# Smart Library RAG — Backend Dependencies
+# ==========================================
+
+# API & Server
+fastapi
+uvicorn
+
+# Data
+pandas
+numpy
+
+# Vector Search (Books Recommender)
+faiss-cpu
+
+# Vector DB (Book Content / Deep QA)
+qdrant-client
+
+# Embedding + Re-ranking
+sentence-transformers    # Bi-encoder (nomic-embed-text-v1.5) + Cross Encoder
+
+# Chunking
+langchain-text-splitters
+transformers             # Tokenizer for accurate chunk sizing
+
+# Keyword Search (fallback)
+rank-bm25
+
+# Agent Orchestration
+langgraph
+
+# Fuzzy Search
+thefuzz
+
+# LLM
+groq
+
+# PDF Parsing
+PyMuPDF
+
+# Utilities
+python-dotenv
+nest_asyncio
+scikit-learn
+torch
+requests
+
+
