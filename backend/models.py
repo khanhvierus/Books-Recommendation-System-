@@ -1,8 +1,8 @@
 import os
-from sqlalchemy import create_engine, Column, Integer, String, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from datetime import datetime
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -20,7 +20,10 @@ class User(Base):
     username = Column(String(50), unique=True, index=True, nullable=False)
     email = Column(String(100), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    
+    #  Đã thêm cột JSON để lưu trữ Hồ sơ cá nhân hóa (Long-term Memory)
+    preferences = Column(JSON, default=dict)
 
 # Hàm khởi tạo cơ sở dữ liệu (Tạo bảng nếu chưa tồn tại)
 def init_db():

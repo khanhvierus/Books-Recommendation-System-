@@ -1,0 +1,7 @@
+# Wait 60 seconds before connecting using these details, or login to https://console.neo4j.io to validate the Aura Instance is available
+NEO4J_URI=neo4j+s://46c0bbef.databases.neo4j.io
+NEO4J_USERNAME=46c0bbef
+NEO4J_PASSWORD=Shk-2pLsL6suAQi8RS7iddijllQJVwvDrMNEZmPrnkE
+NEO4J_DATABASE=46c0bbef
+AURA_INSTANCEID=46c0bbef
+AURA_INSTANCENAME=HarryPotter_GraphRAG

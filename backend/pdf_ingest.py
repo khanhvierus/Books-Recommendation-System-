@@ -1,25 +1,33 @@
 import os
 import re
-import fitz  # Import PyMuPDF thay cho PyPDF2
+import fitz  # Import PyMuPDF
+import nltk
 from typing import List, Dict
 from transformers import AutoTokenizer
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+
+# Tải gói tách câu của NLTK (Chỉ tải lần đầu)
+try:
+    nltk.data.find('tokenizers/punkt')
+except LookupError:
+    nltk.download('punkt')
 
 # ==========================================
-# 1. Tokenizer chuẩn cho embedding model
+# 1. Khởi tạo Tokenizer & Embedding Model
 # ==========================================
-# ĐÃ ĐỔI SANG BGE-M3 ĐỂ ĐỒNG BỘ CÁCH ĐẾM TOKEN VỚI QDRANT & DEEP QA
 EMBED_MODEL_NAME = "BAAI/bge-m3"
 tokenizer = AutoTokenizer.from_pretrained(EMBED_MODEL_NAME, use_fast=True)
+print("⏳ Đang tải mô hình Embedding cho Semantic Chunking...")
+embed_model = SentenceTransformer(EMBED_MODEL_NAME)
 
 # ==========================================
-# 2. Parse PDF và normalize text (Dùng PyMuPDF)
+# 2. Parse PDF và normalize text
 # ==========================================
 def parse_pdf_clean(pdf_path: str) -> str:
-    """Đọc PDF bằng PyMuPDF (fitz) để trích xuất văn bản sạch, chống lỗi khoảng trắng"""
+    """Đọc PDF bằng PyMuPDF (fitz) để trích xuất văn bản sạch"""
     doc = fitz.open(pdf_path)
     pages = []
-    
-    # Tắt cảnh báo màu sắc ICC Profile của PyMuPDF cho console sạch sẽ
     fitz.TOOLS.mupdf_display_errors(False)
     
     for page in doc:
@@ -27,18 +35,10 @@ def parse_pdf_clean(pdf_path: str) -> str:
         if not text:
             continue
             
-        # Remove hyphenation at line breaks (gạch nối khi xuống dòng)
         text = re.sub(r"-\s*\n\s*", "", text)
-        
-        # Flatten newlines to space
         text = text.replace("\n", " ")
-        
-        # Sửa các lỗi dấu câu bị tách rời (ví dụ: "Dudley ." -> "Dudley.")
         text = re.sub(r'\s+([.,!?])', r'\1', text)
-        
-        # Remove multiple spaces
         text = re.sub(r"\s+", " ", text).strip()
-        
         pages.append(text)
         
     return "\n\n".join(pages)
@@ -47,18 +47,9 @@ def parse_pdf_clean(pdf_path: str) -> str:
 # 3. Chapter detection
 # ==========================================
 def split_into_chapters(text: str) -> List[Dict]:
-    """
-    Detect chapters tự động bằng Regex tổ hợp gốc từ (Hỗ trợ số vô hạn).
-    Trả về list of dict [{'chapter_index': 1, 'chapter_title': 'CHAPTER ONE', 'text': '...'}, ...]
-    """
-    # 1. Định nghĩa các "viên gạch" cơ bản tạo nên số đếm tiếng Anh
     root_nums = r"one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|and"
-    
-    # 2. Cho phép các viên gạch tự do ghép nối (cách nhau bởi khoảng trắng hoặc gạch ngang)
-    # Ví dụ nó sẽ tự bắt được: "twenty-two", "one hundred and one"
     word_nums = fr"(?:(?:{root_nums})(?:[\s\-]+(?:{root_nums}))*)"
     
-    # 3. Regex tổng lực: \d+ (bắt số thường) | [ivxlcdm]+ (bắt số La Mã) | word_nums (bắt chữ số tiếng Anh)
     pattern = re.compile(
         fr'(?i)\bchapter\s+(?:\d+|[ivxlcdm]+|{word_nums})\b'
     )
@@ -66,11 +57,7 @@ def split_into_chapters(text: str) -> List[Dict]:
     matches = list(pattern.finditer(text))
 
     if not matches:
-        return [{
-            "chapter_index": 1,
-            "chapter_title": "FULL_BOOK",
-            "text": text
-        }]
+        return [{"chapter_index": 1, "chapter_title": "FULL_BOOK", "text": text}]
 
     chapters = []
     for i, m in enumerate(matches):
@@ -85,54 +72,81 @@ def split_into_chapters(text: str) -> List[Dict]:
         })
 
     return chapters
-# ==========================================
-# 4. Token-based sliding window chunking
-# ==========================================
-def chunk_text_tokens(text: str, chunk_size: int = 512, overlap: int = 100) -> List[Dict]:
-    """
-    Chunk theo token nhưng cắt từ text gốc bằng offset mapping.
-    Trả về list of dict [{'chunk_index': 0, 'token_start':..., 'token_end':..., 'text':...}]
-    """
-    if chunk_size <= overlap:
-        raise ValueError("chunk_size must be larger than overlap")
 
-    enc = tokenizer(
-        text,
-        add_special_tokens=False,
-        truncation=True,
-        max_length=chunk_size,
-        stride=overlap,
-        return_overflowing_tokens=True,
-        return_offsets_mapping=True
-    )
+# ==========================================
+# 4. THUẬT TOÁN SEMANTIC CHUNKING
+# ==========================================
+def semantic_chunk_text(text: str, max_tokens: int = 750, similarity_threshold: float = 0.4) -> List[Dict]:
+    """
+    Cắt text thành các cụm mang ý nghĩa trọn vẹn (Semantic Boundary).
+    - max_tokens: Giới hạn token tối đa cho 1 chunk để LLM dễ "tiêu hóa".
+    - similarity_threshold: Mức độ tương đồng Cosine (0->1). Dưới mức này nghĩa là đã sang chủ đề khác.
+    """
+    # 1. Tách toàn bộ đoạn văn thành các câu riêng biệt
+    sentences = nltk.sent_tokenize(text)
+    if not sentences:
+        return []
+
+    # 2. Vector hóa tất cả các câu trong 1 lần (Tối ưu tốc độ)
+    embeddings = embed_model.encode(sentences)
 
     chunks = []
-    for i, input_ids in enumerate(enc["input_ids"]):
-        offsets = enc["offset_mapping"][i]
-        if not offsets:
-            continue
+    current_chunk_sentences = [sentences[0]]
+    current_chunk_tokens = len(tokenizer.encode(sentences[0], add_special_tokens=False))
+    chunk_index = 0
 
-        char_start = offsets[0][0]
-        char_end = offsets[-1][1]
-        chunk_text = text[char_start:char_end].strip()
+    for i in range(1, len(sentences)):
+        sentence = sentences[i]
+        sentence_tokens = len(tokenizer.encode(sentence, add_special_tokens=False))
+        
+        # 3. Tính độ lệch ngữ nghĩa giữa câu hiện tại (i) và câu trước đó (i-1)
+        sim = cosine_similarity([embeddings[i-1]], [embeddings[i]])[0][0]
 
-        if chunk_text:
+        # ĐIỀU KIỆN NGẮT CHUNK:
+        # Nhảy chủ đề (Similarity < Threshold) HOẶC Chunk đang gom đã quá giới hạn Token
+        # ĐIỀU KIỆN NGẮT CHUNK:
+        if sim < similarity_threshold or (current_chunk_tokens + sentence_tokens > max_tokens):
+            # 1. Lưu chunk hiện tại
+            chunk_text = " ".join(current_chunk_sentences)
             chunks.append({
-                "chunk_index": i,
-                "token_start": i * (chunk_size - overlap),
-                "token_end": i * (chunk_size - overlap) + len(input_ids),
-                "text": chunk_text
+                "chunk_index": chunk_index,
+                "text": chunk_text,
+                "token_size": current_chunk_tokens
             })
+            chunk_index += 1
+            
+            # 2. KHỞI TẠO CHUNK MỚI VỚI SEMANTIC OVERLAP
+            # Mượn lại câu cuối cùng của chunk trước để giữ ngữ cảnh đại từ (He, She, It)
+            overlap_sentence = current_chunk_sentences[-1] if current_chunk_sentences else ""
+            
+            if overlap_sentence:
+                current_chunk_sentences = [overlap_sentence, sentence]
+                # Tính toán lại token size cho 2 câu này
+                overlap_tokens = len(tokenizer.encode(overlap_sentence, add_special_tokens=False))
+                current_chunk_tokens = overlap_tokens + sentence_tokens
+            else:
+                current_chunk_sentences = [sentence]
+                current_chunk_tokens = sentence_tokens
+        else:
+            # Vẫn đang nói cùng chủ đề -> Gộp tiếp vào chunk
+            current_chunk_sentences.append(sentence)
+            current_chunk_tokens += sentence_tokens
+
+    # Xử lý đoạn text còn sót lại ở cuối cùng
+    if current_chunk_sentences:
+        chunk_text = " ".join(current_chunk_sentences)
+        chunks.append({
+            "chunk_index": chunk_index,
+            "text": chunk_text,
+            "token_size": current_chunk_tokens
+        })
 
     return chunks
 
 # ==========================================
 # 5. Ingest all PDFs trong folder
 # ==========================================
-def ingest_all_pdfs(pdf_folder: str, chunk_size: int = 512, overlap: int = 100) -> Dict[str, List[Dict]]:
-    """
-    Trả về dict: {book_name: [chunk1, chunk2, ...]}
-    """
+def ingest_all_pdfs(pdf_folder: str, max_tokens: int = 750) -> Dict[str, List[Dict]]:
     if not os.path.isdir(pdf_folder):
         raise FileNotFoundError(f"PDF folder not found: {pdf_folder}")
 
@@ -143,13 +157,19 @@ def ingest_all_pdfs(pdf_folder: str, chunk_size: int = 512, overlap: int = 100) 
         book_name = os.path.splitext(pdf)[0]
         pdf_path = os.path.join(pdf_folder, pdf)
 
-        print(f"Đang parse và chunk: {book_name}")
+        print(f"\n📖 Đang xử lý: {book_name}")
         full_text = parse_pdf_clean(pdf_path)
         chapters = split_into_chapters(full_text)
 
         chunks_with_metadata = []
         for chap in chapters:
-            chapter_chunks = chunk_text_tokens(chap["text"], chunk_size=chunk_size, overlap=overlap)
+            # GỌI SEMANTIC CHUNKER MỚI
+            chapter_chunks = semantic_chunk_text(
+                chap["text"], 
+                max_tokens=max_tokens, 
+                similarity_threshold=0.4  # 0.4 là mức chuẩn tốt cho BGE-M3 (Chủ đề bắt đầu lệch)
+            )
+            
             for c in chapter_chunks:
                 c.update({
                     "chapter_index": chap["chapter_index"],
@@ -158,7 +178,7 @@ def ingest_all_pdfs(pdf_folder: str, chunk_size: int = 512, overlap: int = 100) 
                 })
                 chunks_with_metadata.append(c)
 
-        print(f"  -> Tổng số chunks: {len(chunks_with_metadata)}")
+        print(f"  -> Tổng số Semantic Chunks: {len(chunks_with_metadata)}")
         all_books[book_name] = chunks_with_metadata
 
     return all_books
@@ -169,9 +189,10 @@ def ingest_all_pdfs(pdf_folder: str, chunk_size: int = 512, overlap: int = 100) 
 if __name__ == "__main__":
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     pdf_folder = os.path.join(BASE_DIR, "data", "pdf_data")
+    
     books = ingest_all_pdfs(pdf_folder)
 
     for book, chunks in books.items():
-        print(f"{book}: {len(chunks)} chunks")
-        print("Sample chunk:", chunks[0])
+        print(f"\n[{book}] Mẫu chunk đầu tiên (Size: {chunks[0]['token_size']} tokens):")
+        print(chunks[0]['text'])
         break

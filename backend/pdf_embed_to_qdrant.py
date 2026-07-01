@@ -5,7 +5,9 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, VectorParams, Distance
 from pdf_ingest import ingest_all_pdfs
 from dotenv import load_dotenv
+
 load_dotenv()
+
 def embed_and_store_to_qdrant(
     pdf_folder: str,
     qdrant_path: str,
@@ -21,15 +23,16 @@ def embed_and_store_to_qdrant(
     model = SentenceTransformer(model_name)
     vector_size = model.get_embedding_dimension() # Sẽ tự động lấy giá trị 1024
 
-    # 2. Parse tất cả PDF thành chunks với cấu hình 512/100
-    print("📂 Đang băm nhỏ file PDF...")
-    all_books = ingest_all_pdfs(pdf_folder, chunk_size=512, overlap=100)
+    # 2. Parse tất cả PDF thành chunks bằng Semantic Chunking
+    print("📂 Đang băm nhỏ file PDF (Semantic Chunking)...")
+    
+    # 🌟 ĐÃ SỬA XUNG ĐỘT: Gọi đúng tham số max_tokens của hàm mới
+    all_books = ingest_all_pdfs(pdf_folder, max_tokens=500)
+    
     if not all_books:
         print("❌ Không tìm thấy file PDF nào trong folder!")
         return
 
-    # 3. Kết nối Qdrant
-    # client = QdrantClient(path=qdrant_path)
     # 3. Kết nối Qdrant Cloud
     client = QdrantClient(
         url=os.getenv("QDRANT_HOST"),
@@ -52,7 +55,7 @@ def embed_and_store_to_qdrant(
             vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE)
         )
 
-        # 4. Embed chunks (Bỏ tiền tố search_document:)
+        # 4. Embed chunks
         print(f"  ⏳ Đang chuyển đổi văn bản thành Vector 1024 chiều...")
         texts_to_embed = [chunk['text'] for chunk in chunks]
         vectors = model.encode(texts_to_embed, show_progress_bar=True)
@@ -62,14 +65,14 @@ def embed_and_store_to_qdrant(
         points = []
         
         for i, (vec, chunk_dict) in enumerate(zip(vectors, chunks)):
+            # 🌟 ĐÃ SỬA: Cập nhật Payload để khớp với metadata của Semantic Chunking
             payload = {
                 "text": chunk_dict["text"],
                 "book": chunk_dict["book"],
                 "chapter_title": chunk_dict.get("chapter_title", "Unknown"),
                 "chapter_index": chunk_dict.get("chapter_index", 0),
                 "chunk_id": chunk_dict["chunk_index"],
-                "token_start": chunk_dict.get("token_start", 0),
-                "token_end": chunk_dict.get("token_end", 0)
+                "token_size": chunk_dict.get("token_size", 0) # Ghi nhận độ lớn thực tế của chunk
             }
             
             points.append(

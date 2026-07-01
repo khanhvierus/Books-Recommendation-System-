@@ -11,7 +11,7 @@ load_dotenv()
 # ==========================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
-csv_path = os.path.join(DATA_DIR, "books_metadata.csv")
+csv_path = os.path.join(DATA_DIR, "books_metadata_new.csv")
 qdrant_path = os.path.join(DATA_DIR, "qdrant_db")
 
 # Tên Collection dành riêng cho Suggest/Recommend
@@ -20,9 +20,9 @@ COLLECTION_NAME = "book_metadata_collection"
 def ingest_metadata_to_qdrant():
     print("🧠 Đang tải BAAI/bge-m3...")
     model = SentenceTransformer("BAAI/bge-m3")
-    vector_size = model.get_sentence_embedding_dimension() # 1024
+    vector_size = model.get_embedding_dimension() # 1024
 
-    print("📂 Đang đọc dữ liệu từ books_metadata.csv...")
+    print("📂 Đang đọc dữ liệu từ books_metadata_new.csv...")
     df = pd.read_csv(csv_path)
 
     # Dọn dẹp dữ liệu (Thay thế NaN bằng string rỗng để Qdrant không báo lỗi)
