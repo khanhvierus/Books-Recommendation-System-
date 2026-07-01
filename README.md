@@ -9,7 +9,7 @@ Smart Library is a fullstack, AI-native library platform that combines **semanti
 
 An overview of the key components and data flows between the Frontend, Backend, Storage, and AI Agent.
 
-![System Architecture Overview](./docs/Architecture_Overview.jpg)
+![System Architecture Overview](./docs/Architecture_Overview.png)
 
 ---
 
@@ -132,8 +132,8 @@ The chatbot's Deep QA pipeline was evaluated using the **[RAGAS](https://docs.ra
 | Metric | Description | Score |
 | :--- | :--- | :---: |
 | **Context Precision** | Are retrieved chunks relevant to the question? | 0.667 |
-| **Context Recall** | Does the retrieved context cover the reference answer? | 0.600 |
-| **Faithfulness** | Is the generated answer grounded in retrieved context (no hallucination)? | 0.500 |
+| **Context Recall** | Does the retrieved context cover the reference answer? | 0.667 |
+| **Faithfulness** | Is the generated answer grounded in retrieved context (no hallucination)? | 0.700 |
 | **Answer Relevancy** | Is the answer on-topic and directly addressing the user's question? | 0.879 |
 
 > Scores range from 0.0 (worst) to 1.0 (best). Metrics with fewer valid samples reflect cases where the pipeline routed to General (chit-chat) node and no retrieval was performed.
